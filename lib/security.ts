@@ -15,9 +15,29 @@ const injectionPatterns = [
 ];
 
 export function inspectInput(input: string) {
-  const normalized = input.normalize('NFKC');
+  const normalized = input.normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g, '');
   const hits = injectionPatterns.filter((pattern) => pattern.test(normalized));
   return { suspicious: hits.length > 0, signals: hits.length };
+}
+
+// Best-effort per-instance limiter. It protects warm serverless instances from accidental
+// bursts; production-wide rate limiting should additionally be enforced at the edge/WAF.
+const buckets = new Map<string, { count: number; resetAt: number }>();
+const WINDOW_MS = 60_000;
+const MAX_REQUESTS = 12;
+
+export function rateLimit(key: string) {
+  const now = Date.now();
+  const current = buckets.get(key);
+  if (!current || current.resetAt <= now) {
+    buckets.set(key, { count: 1, resetAt: now + WINDOW_MS });
+    return { allowed: true, retryAfter: 60 };
+  }
+  if (current.count >= MAX_REQUESTS) {
+    return { allowed: false, retryAfter: Math.max(1, Math.ceil((current.resetAt - now) / 1000)) };
+  }
+  current.count += 1;
+  return { allowed: true, retryAfter: Math.max(1, Math.ceil((current.resetAt - now) / 1000)) };
 }
 
 export function securitySystemPrompt() {
