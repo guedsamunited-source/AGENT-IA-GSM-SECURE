@@ -1,4 +1,5 @@
 name: CI
+
 on:
   push:
     branches: [main]
@@ -17,4 +18,5 @@ jobs:
           cache: npm
       - run: npm install
       - run: npm run typecheck
+      - run: npm test
       - run: npm run build
